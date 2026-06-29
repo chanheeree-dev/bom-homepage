@@ -8172,7 +8172,7 @@ function ahpRenderResults() {
   const criteriaRows = ahpConfig.criteria.map((criterion, index) => [
     escapeHtml(criterion.name),
     ahpFormatPercent(criteriaWeights[index]),
-    criterion.id === "fuel" ? "실측값" : `${((alternativeCr[criterion.id] || 0) * 100).toFixed(1)}%`,
+    criterion.id === "fuel" ? "입력값" : `${((alternativeCr[criterion.id] || 0) * 100).toFixed(1)}%`,
     ahpConsistencyLabel(alternativeCr[criterion.id] || 0),
   ]);
   ahpEls.criteriaWeights.innerHTML = ahpTable(["평가 기준", "가중치", "CR*", "판정"], criteriaRows);
