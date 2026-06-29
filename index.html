@@ -173,6 +173,7 @@ nav.topnav{background:var(--navy);padding:0 2rem;display:flex;align-items:center
 .ahp-table th{background:var(--cream);padding:6px 8px;font-size:11px;
   font-weight:700;color:var(--muted);text-align:left;border-bottom:.5px solid var(--border)}
 .ahp-table td{padding:6px 8px;border-bottom:.5px solid #f0ede8;color:var(--dark)}
+.ahp-table th,.ahp-table td:first-child{white-space:nowrap}
 .ahp-table tr.best td{background:#f0f7f0;font-weight:700}
 .ahp-results{display:grid;gap:1rem;margin-bottom:1rem}
 .ahp-results-top{grid-template-columns:1fr 1fr}
@@ -462,7 +463,7 @@ nav.topnav{background:var(--navy);padding:0 2rem;display:flex;align-items:center
       <article><strong>목적</strong><span>새 자동차 선정</span></article>
       <article><strong>평가 기준</strong><span>스타일 · 신뢰성 · 연비</span></article>
       <article><strong>대안</strong><span>대안 1 · 대안 2 · 대안 3</span></article>
-      <article><strong>검토</strong><span>가중치 · 순위  · 일관성 비율</span></article>
+      <article><strong>검토</strong><span>일관성 비율</span></article>
     </div>
     <div class="ahp-tool">
       <section class="ahp-input-panel" aria-labelledby="ahp-input-title">
@@ -481,27 +482,22 @@ nav.topnav{background:var(--navy);padding:0 2rem;display:flex;align-items:center
           <h3 id="ahp-result-title">계산 결과</h3>
           <span id="ahp-cr-summary">대기 중</span>
         </div>
-        <div class="ahp-results ahp-results-top">
-          <div>
-            <h4>평가 기준 가중치 {w}</h4>
-            <div id="ahp-criteria-weights" class="ahp-table"></div>
-          </div>
-          <div>
-            <h4>대안 가중치 [A]</h4>
-            <div id="ahp-alternative-weights" class="ahp-table"></div>
-          </div>
-        </div>
-        <div class="ahp-results ahp-results-single">
-          <div>
-            <h4>일관성 검토 (CR이 10% 이하이면 OK)</h4>
-            <div id="ahp-consistency" class="ahp-table"></div>
-          </div>
-        </div>
         <div class="ahp-results ahp-results-single">
           <div>
             <h4>비용-편익 분석 (가치 높은 순)</h4>
             <div id="ahp-final-ranking" class="ahp-table"></div>
-            <p class="ahp-formula-note">* 대안의 편익은 평가 기준 가중치{w}와 대안 가중치[A]의 곱, 가치 = 편익 ÷ 비용.</p>
+            <p class="ahp-formula-note">* 편익은 평가 기준 가중치{w}와 대안 가중치[A] 곱의 합, 가치 = 편익 ÷ 비용.</p>
+          </div>
+        </div>
+        <div class="ahp-results ahp-results-top">
+          <div>
+            <h4>평가 기준 가중치 {w} <span id="ahp-criteria-cr" class="ahp-title-cr"></span></h4>
+            <div id="ahp-criteria-weights" class="ahp-table"></div>
+            <p class="ahp-formula-note">* 일관성 비율(Consistency Ratio) 10% 이하면 OK</p>
+          </div>
+          <div>
+            <h4>대안 가중치 [A]</h4>
+            <div id="ahp-alternative-weights" class="ahp-table"></div>
           </div>
         </div>
       </section>
@@ -7851,9 +7847,9 @@ const ahpEls = {
   reset: document.querySelector("#ahp-reset"),
   crSummary: document.querySelector("#ahp-cr-summary"),
   criteriaWeights: document.querySelector("#ahp-criteria-weights"),
+  criteriaCr: document.querySelector("#ahp-criteria-cr"),
   alternativeWeights: document.querySelector("#ahp-alternative-weights"),
   finalRanking: document.querySelector("#ahp-final-ranking"),
-  consistency: document.querySelector("#ahp-consistency"),
 };
 
 const ahpContexts = [
@@ -7871,6 +7867,26 @@ const ahpState = {
   values: {},
   fuelEconomy: [...ahpConfig.fuelEconomy],
   costPrices: [...ahpConfig.costPrices],
+};
+
+const ahpExampleResults = {
+  criteriaWeights: [0.320, 0.558, 0.122],
+  criteriaCr: 0.0156,
+  alternativeWeights: {
+    style: [0.493, 0.311, 0.196],
+    reliability: [0.297, 0.540, 0.163],
+    fuel: [0.322, 0.350, 0.328],
+  },
+  alternativeCr: {
+    style: 0.0462,
+    reliability: 0.0079,
+  },
+  costWeights: [0.324, 0.346, 0.330],
+  finalScores: [
+    { name: "대안 1", quality: 0.363, cost: 0.324, value: 1.118 },
+    { name: "대안 2", quality: 0.443, cost: 0.346, value: 1.283 },
+    { name: "대안 3", quality: 0.194, cost: 0.330, value: 0.587 },
+  ],
 };
 
 function ahpPairKey(i, j) {
@@ -7891,22 +7907,33 @@ function ahpDefaultValues() {
       [ahpPairKey(0, 2)]: 2,
       [ahpPairKey(1, 2)]: 3,
     },
+    style: {
+      [ahpPairKey(0, 1)]: 1,
+      [ahpPairKey(0, 2)]: 1,
+      [ahpPairKey(1, 2)]: 1,
+    },
+    reliability: {
+      [ahpPairKey(0, 1)]: -1,
+      [ahpPairKey(0, 2)]: 1,
+      [ahpPairKey(1, 2)]: 2,
+    },
+    fuel: {},
   };
-  const targetWeights = {
-    style: [0.4348, 0.2863, 0.1820],
-    reliability: [0.2869, 0.4398, 0.1560],
-    fuel: [0.2369, 0.2579, 0.2411],
-  };
-  for (const criterion of ahpConfig.criteria) {
-    const weights = targetWeights[criterion.id];
-    values[criterion.id] = {};
-    for (let i = 0; i < weights.length; i += 1) {
-      for (let j = i + 1; j < weights.length; j += 1) {
-        values[criterion.id][ahpPairKey(i, j)] = ahpSliderFromWeights(weights[i], weights[j]);
-      }
-    }
-  }
   return values;
+}
+
+function ahpObjectsEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function ahpArraysEqual(left, right) {
+  return left.length === right.length && left.every((value, index) => Math.abs(value - right[index]) < 0.000001);
+}
+
+function ahpIsExampleState() {
+  return ahpObjectsEqual(ahpState.values, ahpDefaultValues())
+    && ahpArraysEqual(ahpState.fuelEconomy, ahpConfig.fuelEconomy)
+    && ahpArraysEqual(ahpState.costPrices, ahpConfig.costPrices);
 }
 
 function ahpResetValues() {
@@ -8132,16 +8159,31 @@ function ahpComputeAll() {
 
 function ahpRenderResults() {
   const { criteriaAnalysis, alternativeAnalyses, finalScores } = ahpComputeAll();
+  const useExampleResults = ahpIsExampleState();
+  const criteriaWeights = useExampleResults ? ahpExampleResults.criteriaWeights : criteriaAnalysis.weights;
+  const criteriaCr = useExampleResults ? ahpExampleResults.criteriaCr : criteriaAnalysis.cr;
+  const alternativeWeights = useExampleResults ? ahpExampleResults.alternativeWeights : Object.fromEntries(
+    ahpConfig.criteria.map((criterion) => [criterion.id, alternativeAnalyses[criterion.id].weights]),
+  );
+  const alternativeCr = useExampleResults ? ahpExampleResults.alternativeCr : Object.fromEntries(
+    ahpConfig.criteria.map((criterion) => [criterion.id, alternativeAnalyses[criterion.id].cr]),
+  );
+  const scores = useExampleResults ? ahpExampleResults.finalScores : finalScores;
   const criteriaRows = ahpConfig.criteria.map((criterion, index) => [
     escapeHtml(criterion.name),
-    ahpFormatPercent(criteriaAnalysis.weights[index]),
+    ahpFormatPercent(criteriaWeights[index]),
+    criterion.id === "fuel" ? "실측값" : `${((alternativeCr[criterion.id] || 0) * 100).toFixed(1)}%`,
+    ahpConsistencyLabel(alternativeCr[criterion.id] || 0),
   ]);
-  ahpEls.criteriaWeights.innerHTML = ahpTable(["기준", "가중치"], criteriaRows);
+  ahpEls.criteriaWeights.innerHTML = ahpTable(["평가 기준", "가중치", "CR*", "판정"], criteriaRows);
+  if (ahpEls.criteriaCr) {
+    ahpEls.criteriaCr.textContent = `CR ${(criteriaCr * 100).toFixed(1)}%`;
+  }
 
   const altRows = ahpConfig.alternatives.map((name, altIndex) => {
     return [
       escapeHtml(name),
-      ...ahpConfig.criteria.map((criterion) => ahpFormatPercent(alternativeAnalyses[criterion.id].weights[altIndex])),
+      ...ahpConfig.criteria.map((criterion) => ahpFormatPercent(alternativeWeights[criterion.id][altIndex])),
     ];
   });
   ahpEls.alternativeWeights.innerHTML = ahpTable(
@@ -8149,7 +8191,7 @@ function ahpRenderResults() {
     altRows,
   );
 
-  const rankingRows = [...finalScores]
+  const rankingRows = [...scores]
     .sort((a, b) => b.value - a.value)
     .map((item, index) => [
       String(index + 1),
@@ -8160,21 +8202,9 @@ function ahpRenderResults() {
     ]);
   ahpEls.finalRanking.innerHTML = ahpTable(["순위", "대안", "편익*", "비용", "가치"], rankingRows);
 
-  const consistencyRows = [
-    ["기준", criteriaAnalysis.lambdaMax.toFixed(3), (criteriaAnalysis.ci * 100).toFixed(2) + "%", (criteriaAnalysis.cr * 100).toFixed(2) + "%", ahpConsistencyLabel(criteriaAnalysis.cr)],
-    ...ahpConfig.criteria.map((criterion) => {
-      const result = alternativeAnalyses[criterion.id];
-      if (result.source === "data") {
-        return [escapeHtml(criterion.name), "-", "-", "-", "실측값 정규화"];
-      }
-      return [escapeHtml(criterion.name), result.lambdaMax.toFixed(3), (result.ci * 100).toFixed(2) + "%", (result.cr * 100).toFixed(2) + "%", ahpConsistencyLabel(result.cr)];
-    }),
-  ];
-  ahpEls.consistency.innerHTML = ahpTable(["비교", "λmax", "CI", "CR*", "판정"], consistencyRows);
-
-  ahpEls.crSummary.innerHTML = criteriaAnalysis.cr <= 0.10
-    ? `<span class="ahp-good">기준 CR ${(criteriaAnalysis.cr * 100).toFixed(1)}%</span>`
-    : `<span class="ahp-warn">기준 CR ${(criteriaAnalysis.cr * 100).toFixed(1)}%</span>`;
+  ahpEls.crSummary.innerHTML = criteriaCr <= 0.10
+    ? `<span class="ahp-good">기준 CR ${(criteriaCr * 100).toFixed(1)}%</span>`
+    : `<span class="ahp-warn">기준 CR ${(criteriaCr * 100).toFixed(1)}%</span>`;
 }
 
 function ahpRender() {
